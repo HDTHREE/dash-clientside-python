@@ -3,6 +3,7 @@ import dash_extensions.enrich as dee
 import dash_extensions as de
 import dash_extensions.utils as deu
 from dash.development.base_component import Component
+import textwrap as tw
 import itertools as itt
 
 
@@ -13,7 +14,7 @@ STYLESHEET: dict[str, str] = {"href": "https://pyscript.net/releases/2024.1.1/co
 
 
 class ClientsidePythonTransform(dee.DashTransform):
-    def __init__(self, prefix: str | None):
+    def __init__(self, prefix: str | None = None):
         self.prefix = prefix or ""
         super().__init__()
 
@@ -26,10 +27,13 @@ class ClientsidePythonTransform(dee.DashTransform):
     
     @staticmethod
     def _remove_decorator(source: str) -> str:
+        if source.startswith(" "):
+            source = tw.dedent(source)
         if not source.startswith("@"):
             return source
         index: int = source.index("def")
         return source[index:]
+
     
     @staticmethod
     def _to_js(callback: dee.CallbackBlueprint, name: str) -> dee.CallbackBlueprint:
@@ -87,3 +91,20 @@ class ClientsidePythonTransform(dee.DashTransform):
                 }
             )
         ]
+
+
+if __name__ == "__main__":
+    from dash import html, Input, Dash
+    app: dee.DashProxy = dee.DashProxy(transforms=[ClientsidePythonTransform()], external_scripts=[SCRIPT], external_stylesheets=[STYLESHEET])
+    app.layout = (button := html.Button("Hello World"))
+
+
+    @app.callback(
+        Input(button, "n_clicks"),
+        prevent_inital_call=True,
+        clientside=True,
+    )
+    def foo(_: int) -> None:
+        print("Hi on the client")
+
+    app.run()
