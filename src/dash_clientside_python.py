@@ -12,8 +12,11 @@ SCRIPT: dict[str, str] = {"src": "https://pyscript.net/releases/2024.5.1/core.js
 STYLESHEET: dict[str, str] = {"href": "https://pyscript.net/releases/2024.1.1/core.css", "rel": "stylesheet"}
 
 
-
 class ClientsidePythonTransform(dee.DashTransform):
+    def __init__(self, prefix: str | None):
+        self.prefix = prefix or ""
+        super().__init__()
+
     @staticmethod
     def _filter(callbacks: list[dee.CallbackBlueprint]) -> tuple[list[dee.CallbackBlueprint], list[dee.CallbackBlueprint]]:
         server, client = [], []
@@ -38,20 +41,20 @@ class ClientsidePythonTransform(dee.DashTransform):
         return callback
 
 
-    def _get_name(source: str) -> str:
+    def _get_name(self, source: str) -> str:
         start: int = source.index("def") + 4
         rest = source[start:]
         try:
             end = rest.index(r"(")
         except ValueError:
             end = rest.index(r"[")
-        return rest[:end]
+        return self.prefix + rest[:end]
 
     def apply(self, callbacks: list[dee.CallbackBlueprint], clientside_callbacks: list[dee.CallbackBlueprint]) -> tuple[list[dee.CallbackBlueprint], list[dee.CallbackBlueprint]]:
         python_server_callbacks, self.python_client_callbacks = ClientsidePythonTransform._filter(callbacks)
 
         self.source = [ClientsidePythonTransform._remove_decorator(inspect.getsource(cb.f)) for cb in self.python_client_callbacks]
-        self.names = [ClientsidePythonTransform._get_name(f_str) for f_str in self.source]
+        self.names = [self._get_name(f_str) for f_str in self.source]
 
         return self.apply_serverside(python_server_callbacks), self.apply_clientside(clientside_callbacks)
 
