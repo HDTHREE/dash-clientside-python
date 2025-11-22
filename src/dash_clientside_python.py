@@ -2,8 +2,6 @@ import inspect
 import dash_extensions.enrich as dee
 import dash_extensions as de
 import dash_extensions.utils as deu
-import dash.html as html
-from dash import Input
 from dash.development.base_component import Component
 import itertools as itt
 
