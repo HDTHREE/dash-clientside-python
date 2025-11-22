@@ -94,7 +94,7 @@ class ClientsidePythonTransform(dee.DashTransform):
 
 
 if __name__ == "__main__":
-    from dash import html, Input, Dash
+    from dash import html, Input
     app: dee.DashProxy = dee.DashProxy(transforms=[ClientsidePythonTransform()], external_scripts=[SCRIPT], external_stylesheets=[STYLESHEET])
     app.layout = (button := html.Button("Hello World"))
 
