@@ -3,12 +3,10 @@ import dash_extensions.enrich as dee
 import dash_extensions as de
 import dash_extensions.utils as deu
 import dash.html as html
-from dash import Input, clientside_callback
-import dash_extensions.javascript as djs
+from dash import Input
 from dash.development.base_component import Component
 import itertools as itt
 
-clientside_callback
 
 
 class ClientsidePythonTransform(dee.DashTransform):
