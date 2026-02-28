@@ -1,10 +1,12 @@
 import inspect
+import typing_extensions as tp
 import dash_extensions.enrich as dee
 import dash_extensions as de
 import dash_extensions.utils as deu
 from dash.development.base_component import Component
 import textwrap as tw
 import itertools as itt
+import dill
 
 
 SCRIPT: dict[str, str] = {"src": "https://pyscript.net/releases/2024.5.1/core.js", "type": "module"}
@@ -16,6 +18,7 @@ STYLESHEET: dict[str, str] = {"href": "https://pyscript.net/releases/2024.1.1/co
 class ClientsidePythonTransform(dee.DashTransform):
     def __init__(self, prefix: str | None = None):
         self.prefix = prefix or ""
+        self.ff = []
         super().__init__()
 
     @staticmethod
@@ -25,69 +28,56 @@ class ClientsidePythonTransform(dee.DashTransform):
             client.append(callback) if callback.kwargs.get("clientside", False) else server.append(callback)
         return server, client
     
-    @staticmethod
-    def _remove_decorator(source: str) -> str:
-        if source.startswith(" "):
-            source = tw.dedent(source)
-        if not source.startswith("@"):
-            return source
-        index: int = source.index("def")
-        return source[index:]
-
-    
-    @staticmethod
-    def _to_js(callback: dee.CallbackBlueprint, name: str) -> dee.CallbackBlueprint:
+    def _to_js(self, callback: dee.CallbackBlueprint) -> dee.CallbackBlueprint:
         annotations = inspect.getfullargspec(callback.f).annotations
+        name: str = callback.f.__name__
         args = [a for a in annotations if a != "return"]
         args_str: str = ",".join(args)
         js_str: str = fr"({args_str}) => {name}({args_str})"
+        self.ff.append(callback.f)
         callback.f = js_str
         return callback
 
-
-    def _get_name(self, source: str) -> str:
-        start: int = source.index("def") + 4
-        rest = source[start:]
-        try:
-            end = rest.index(r"(")
-        except ValueError:
-            end = rest.index(r"[")
-        return self.prefix + rest[:end]
-
     def apply(self, callbacks: list[dee.CallbackBlueprint], clientside_callbacks: list[dee.CallbackBlueprint]) -> tuple[list[dee.CallbackBlueprint], list[dee.CallbackBlueprint]]:
-        python_server_callbacks, self.python_client_callbacks = ClientsidePythonTransform._filter(callbacks)
+        callbacks, self.python_client_callbacks = ClientsidePythonTransform._filter(callbacks)
 
-        self.source = [ClientsidePythonTransform._remove_decorator(inspect.getsource(cb.f)) for cb in self.python_client_callbacks]
-        self.names = [self._get_name(f_str) for f_str in self.source]
-
-        return self.apply_serverside(python_server_callbacks), self.apply_clientside(clientside_callbacks)
-
-    def apply_serverside(self, callbacks: list[dee.CallbackBlueprint]) -> list[dee.CallbackBlueprint]:
-        return callbacks
-
-    def apply_clientside(self, callbacks: list[dee.CallbackBlueprint]) -> list[dee.CallbackBlueprint]:
-        return [*callbacks, *itt.starmap(ClientsidePythonTransform._to_js, zip(self.python_client_callbacks, self.names))]
-
+        return self.apply_serverside(callbacks), self.apply_clientside(clientside_callbacks + list(map(self._to_js, self.python_client_callbacks)))
 
     def transform_layout(self, layout: list[Component]) -> None:
+        names = [f.__name__ for f in self.ff]
+
+        ff_bytes = list(map(dill.dumps, self.ff))
+
         layout.children = [
             *deu.as_list(layout.children),
             de.Purify(
-                html=fr"""
+                html=
+                """
+                <script>
+                    console.log("here");
+                    await pyodide.loadPackage("micropip");
+                    const micropip = pyodide.pyimport("micropip");
+                    await micropip.install("dill");
+                    console.log("here");
+                </script>
+                """ + fr"""
                 <py-script>
                     import js
+                    # import dill
+
                     from pyscript.ffi import create_proxy
 
-                    {"".join(self.source)}
-
-                    for name in {str(self.names)}:
-                        f = globals()[name]
+                    for name, f_b in zip({str(names)}, {str(ff_bytes)}):
+                        continue
+                        f = dill.loads(f_b)
                         js_f = create_proxy(f)
                         setattr(js, name, js_f)
 
-                </py-script>""",
+                </py-script>
+                """
+                ,
                 config={
-                    "ALLOWED_TAGS": ["py-script"]
+                    "ALLOWED_TAGS": ["py-script", "script"]
                 }
             )
         ]
